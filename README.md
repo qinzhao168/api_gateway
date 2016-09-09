@@ -1,2 +1,2 @@
 # api_gateway
-api_gatewat
+api_gateway
