@@ -1,11 +1,10 @@
-package model
+package dao
 
 import (
 	"fmt"
 	"time"
 
-	"basis/jsonx"
-	"basis/log"
+	"api_gateway/basis/jsonx"
 )
 
 //
@@ -28,20 +27,20 @@ type ContainerDto struct {
 
 //Container is struct of docker container
 type Container struct {
-	Id      string
-	Ip      string
-	Image   string
-	Name    string
-	Ports   string
-	Mounts  string
-	Status  int
-	Created time.Time
+	Id      string    `json:"id" xorm:"pk not null varchar(12)"`
+	Ip      string    `json:"ip" xorm:"varchar(256)"`
+	Image   string    `json:"image" xorm:"varchar(1024)"`
+	Name    string    `json:"name" xorm:"varchar(1024)"`
+	Ports   string    `json:"ports" xorm:"varchar(1024)"`
+	Mounts  string    `json:"mounts" xorm:"varchar(1024)"`
+	Status  int       `json:"status" xorm:"int(1)"`
+	Created time.Time `json:"created" xorm:"created"`
 }
 
 func (container *Container) String() string {
 	containerStr, err := jsonx.ToJson(container)
 	if err != nil {
-		log.New("").Errorf("container to string err :%s", err.Error())
+		log.Errorf("container to string err :%s", err.Error())
 		return ""
 	}
 	return containerStr
