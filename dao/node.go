@@ -1,12 +1,13 @@
 package dao
 
 import (
+	"api_gateway/basis/errors"
 	"api_gateway/basis/jsonx"
 )
 
 //Node node is server node
 type Node struct {
-	Ip          string  `json:"ip" xorm:"pk not null varchar(1024)"`
+	Ip          string  `json:"ip" xorm:"pk not null varchar(255)"`
 	Hostname    string  `json:"hostname" xorm:"varchar(1024)"`
 	Os          string  `json:"os" xorm:"varchar(1024)"`
 	CpuNum      int     `json:"cpuNum" xorm:"int(11)"`
@@ -49,6 +50,7 @@ func (node *Node) Delete() error {
 
 func (node *Node) Update() error {
 	_, err := engine.Id(node.Ip).Update(node)
+
 	if err != nil {
 		return err
 	}

@@ -68,7 +68,7 @@ func EtcDir() string {
 func String(session, key string) string {
 	s, err := gCfg.String(session, key)
 	if err != nil {
-		panic(ErrNoCfg.Error() + session + key)
+		panic(ErrNoCfg.Error() + session + "  " + key)
 	}
 	return s
 }

@@ -175,4 +175,6 @@ func HttpServe(addr string) error {
 
 func regHttpApiHandles(router *mux.Router) {
 	RegisterNodeHandler(router)
+	RegisterAppHandler(router)
+	RegisterContainerHandler(router)
 }
