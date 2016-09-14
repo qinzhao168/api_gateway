@@ -5,20 +5,29 @@ import (
 	"api_gateway/basis/jsonx"
 )
 
+type AppStatus int
+
+const (
+	AppBuilding  AppStatus = 0
+	AppSuccessed AppStatus = 1
+	AppFailed    AppStatus = 2
+	AppRunning   AppStatus = 3
+)
+
 //App is struct of application
 type App struct {
-	Id            int    `json:"id" xorm:"pk not null autoincr int(11)"`
-	Name          string `json:"name" xorm:"varchar(1024)"`
-	Region        string `json:"region" xorm:"varchar(1024)"`
-	Memory        int    `json:"memory" xorm:"int(11)"`
-	Cpu           int    `json:"cpu" xorm:"int(11)"`
-	InstanceCount int    `json:"instanceCount" xorm:"int(11)"`
-	Envs          string `json:"envs" xorm:"varchar(1024)"`
-	Ports         string `json:"ports" xorm:"varchar(1024)"`
-	Image         string `json:"image" xorm:"varchar(1024)"`
-	Status        int    `json:"status" xorm:"int(1)"`
-	UserName      string `json:"userName" xorm:"varchar(1024)"`
-	Remark        string `json:"remark" xorm:"varchar(1024)"`
+	Id            int       `json:"id" xorm:"pk not null autoincr int(11)"`
+	Name          string    `json:"name" xorm:"varchar(256)"`
+	Region        string    `json:"region" xorm:"varchar(256)"`
+	Memory        string    `json:"memory" xorm:"varchar(11)"`
+	Cpu           string    `json:"cpu" xorm:"varchar(11)"`
+	InstanceCount int32     `json:"instanceCount" xorm:"int(11)"`
+	Envs          string    `json:"envs" xorm:"varchar(256)"`
+	Ports         string    `json:"ports" xorm:"varchar(256)"`
+	Image         string    `json:"image" xorm:"varchar(256)"`
+	Status        AppStatus `json:"status" xorm:"int(1)"` //构建中 0 成功 1 失败 2
+	UserName      string    `json:"userName" xorm:"varchar(256)"`
+	Remark        string    `json:"remark" xorm:"varchar(1024)"`
 }
 
 func (app *App) String() string {
