@@ -62,9 +62,6 @@ func Create(req *http.Request) (code string, ret interface{}) {
 			},
 			v1.PodSpec{
 				RestartPolicy: v1.RestartPolicyAlways,
-				NodeSelector: map[string]string{
-					"name": app.Name,
-				},
 				Containers: []v1.Container{
 					v1.Container{
 						Name:  app.Name,
@@ -92,7 +89,7 @@ func Create(req *http.Request) (code string, ret interface{}) {
 	rc.ObjectMeta = rcObjectMeta
 	rc.Spec = rcSpec
 
-	result, err := dao.Clientset.Core().ReplicationControllers("").Create(rc)
+	result, err := dao.Clientset.Core().ReplicationControllers("default").Create(rc)
 	if err != nil {
 		log.Errorf("deploy application failed ,the reason is %s", err.Error())
 		app.Status = dao.AppFailed

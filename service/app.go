@@ -28,6 +28,7 @@ func InserApp(req *http.Request) (code string, ret interface{}) {
 	}
 
 	if err := app.Insert(); err != nil {
+		log.Errorf("err %v", err.Error())
 		code = StatusInternalServerError
 		ret = JSON_EMPTY_OBJ
 		return

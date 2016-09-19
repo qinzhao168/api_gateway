@@ -3,9 +3,10 @@ package dao
 import (
 	"api_gateway/basis/db"
 	l "api_gateway/basis/log"
+	"flag"
 
 	"k8s.io/client-go/1.4/kubernetes"
-	"k8s.io/client-go/1.4/rest"
+	"k8s.io/client-go/1.4/tools/clientcmd"
 )
 
 var (
@@ -17,6 +18,7 @@ var (
 
 func init() {
 	initDB()
+	initK8Sclient()
 }
 
 func initDB() {
@@ -30,11 +32,15 @@ func initDB() {
 	if err = engine.Sync(new(Node), new(App), new(Container)); err != nil {
 		log.Fatalf("Sync fail :%s", err.Error())
 	}
+
+	engine.ShowSQL(true)
 }
 
 func initK8Sclient() {
-	// creates the in-cluster config
-	config, err := rest.InClusterConfig()
+	kubeconfig := flag.String("kubeconfig", "./etc/config", "absolute path to the kubeconfig file")
+	flag.Parse()
+	// uses the current context in kubeconfig
+	config, err := clientcmd.BuildConfigFromFlags("172.17.11.1:8080", *kubeconfig)
 	if err != nil {
 		panic(err.Error())
 	}

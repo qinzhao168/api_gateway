@@ -177,4 +177,5 @@ func regHttpApiHandles(router *mux.Router) {
 	RegisterNodeHandler(router)
 	RegisterAppHandler(router)
 	RegisterContainerHandler(router)
+	RegisterDeploymentHandler(router)
 }
