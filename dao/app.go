@@ -25,7 +25,7 @@ type App struct {
 	Envs          string    `json:"envs" xorm:"varchar(256)"`
 	Ports         string    `json:"ports" xorm:"varchar(256)"`
 	Image         string    `json:"image" xorm:"varchar(256)"`
-	Status        AppStatus `json:"status" xorm:"int(1)"` //构建中 0 成功 1 失败 2
+	Status        AppStatus `json:"status" xorm:"int(1)"` //构建中 0 成功 1 失败 2 运行中 3
 	UserName      string    `json:"userName" xorm:"varchar(256)"`
 	Remark        string    `json:"remark" xorm:"varchar(1024)"`
 }

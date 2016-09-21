@@ -2,10 +2,10 @@ package dao
 
 import (
 	"fmt"
-	"time"
 
 	"api_gateway/basis/errors"
 	"api_gateway/basis/jsonx"
+	"k8s.io/client-go/1.4/pkg/api/v1"
 )
 
 //
@@ -28,14 +28,18 @@ type ContainerDto struct {
 
 //Container is struct of docker container
 type Container struct {
-	Id      int       `json:"id" xorm:"pk not null varchar(12)"`
-	Ip      string    `json:"ip" xorm:"varchar(256)"`
-	Image   string    `json:"image" xorm:"varchar(1024)"`
-	Name    string    `json:"name" xorm:"varchar(1024)"`
-	Ports   string    `json:"ports" xorm:"varchar(1024)"`
-	Mounts  string    `json:"mounts" xorm:"varchar(1024)"`
-	Status  int       `json:"status" xorm:"int(1)"`
-	Created time.Time `json:"created" xorm:"created"`
+	Id         int                `json:"id" xorm:"pk not null varchar(12)"`
+	ExtranetIp string             `json:"extranetIp" xorm:"varchar(256)"`
+	IntranetIp string             `json:"intranetIp" xorm:"varchar(256)"`
+	Image      string             `json:"image" xorm:"varchar(1024)"`
+	Name       string             `json:"name" xorm:"varchar(1024)"`
+	Ports      []v1.ContainerPort `json:"ports" xorm:"varchar(1024)"`
+	Mounts     []v1.VolumeMount   `json:"mounts" xorm:"varchar(1024)"`
+	Status     int                `json:"status" xorm:"int(1)"`
+	Envs       []v1.EnvVar        `json:"envs" xorm:"varchar(1024)"`
+	Created    string             `json:"created" xorm:"varchar(1024)"`
+	Cpu        string             `json:"cpu" xorm:"varchar(1024)"`
+	Memory     string             `json:"memory" xorm:"varchar(1024)"`
 }
 
 func (container *Container) String() string {
