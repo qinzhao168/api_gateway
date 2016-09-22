@@ -29,9 +29,9 @@ func initDB() {
 	if err = engine.Ping(); err != nil {
 		log.Fatalf("access the mysql db fail ,the reason is %s", err.Error())
 	}
-	// if err = engine.Sync(new(Node), new(App), new(Container)); err != nil {
-	// 	log.Fatalf("Sync fail :%s", err.Error())
-	// }
+	if err = engine.Sync(new(App)); err != nil {
+		log.Fatalf("Sync fail :%s", err.Error())
+	}
 
 	engine.ShowSQL(true)
 }

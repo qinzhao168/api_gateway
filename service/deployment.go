@@ -1,10 +1,11 @@
 package service
 
 import (
-	"api_gateway/dao"
 	"encoding/json"
 	"net/http"
 
+	"api_gateway/basis/intUtil"
+	"api_gateway/dao"
 	"github.com/gorilla/mux"
 	"k8s.io/client-go/1.4/pkg/api"
 	"k8s.io/client-go/1.4/pkg/api/resource"
@@ -25,12 +26,11 @@ var (
 )
 
 func RegisterDeploymentHandler(router *mux.Router) {
-	RegisterHttpHandler(router, "/deployment", HTTP_POST, DeploymentApp)           //部署应用
-	RegisterHttpHandler(router, "/deployment", HTTP_DELETE, Delete)                //删除应用
-	RegisterHttpHandler(router, "/deployment", HTTP_PUT, Update)                   //更新应用配置 包括弹性伸缩  容器个数  启动  停止
-	RegisterHttpHandler(router, "/deployment/redployment", HTTP_POST, ReDeloyment) //重新部署
+	RegisterHttpHandler(router, "/deployment", HTTP_POST, DeploymentApp) //部署应用
+	RegisterHttpHandler(router, "/deployment", HTTP_DELETE, Delete)      //删除应用
+	RegisterHttpHandler(router, "/deployment", HTTP_PUT, Update)         //更新应用配置 包括弹性伸缩  容器个数  启动  停止  重新部署
 	RegisterHttpHandler(router, "/deployment/status", HTTP_GET, GetAppStatus)
-	RegisterHttpHandler(router, "/deployment/containers", HTTP_GET, GetContainers)
+	RegisterHttpHandler(router, "/deployment/containers", HTTP_GET, GetAppContainers)
 }
 
 func DeploymentApp(req *http.Request) (code string, ret interface{}) {
@@ -69,6 +69,7 @@ func DeploymentApp(req *http.Request) (code string, ret interface{}) {
 		Template: &v1.PodTemplateSpec{
 			v1.ObjectMeta{
 				Name: app.Name,
+				// Namespace: app.UserName,
 				Labels: map[string]string{
 					"name": app.Name,
 				},
@@ -207,182 +208,131 @@ func Update(req *http.Request) (code string, ret interface{}) {
 		return
 	}
 
-	//创建replicationController
-	rcTypeMeta := unversioned.TypeMeta{Kind: "ReplicationController", APIVersion: "v1"}
-
-	rcObjectMeta := v1.ObjectMeta{
-		Name: app.Name,
-		Labels: map[string]string{
-			"name": app.Name,
-		},
+	// rc := new(v1.ReplicationController)
+	rc, _ := dao.Clientset.Core().ReplicationControllers(NameSpace).Get(app.Name)
+	//stop application
+	if vebrType == "stop" {
+		rc.Spec.Replicas = intUtil.Int32ToPointer(0)
+		app.UpdateStatus = dao.StopFailed
 	}
 
-	rcSpec := v1.ReplicationControllerSpec{
-		Replicas: &app.InstanceCount,
-		Selector: map[string]string{
-			"name": app.Name,
-		},
-		Template: &v1.PodTemplateSpec{
-			v1.ObjectMeta{
-				Name: app.Name,
-				Labels: map[string]string{
-					"name": app.Name,
-				},
+	//start application
+	if vebrType == "start" {
+		app, err := app.QueryOne() //cording  appname rcname to query app record
+		if err != nil {
+			log.Errorf("query application failed ：%s", err.Error())
+			code = StatusInternalServerError
+			ret = map[string]interface{}{"success": false, "reason": err.Error()}
+			return
+		}
+		rc.Spec.Replicas = intUtil.Int32ToPointer(app.InstanceCount)
+		app.UpdateStatus = dao.StartFailed
+	}
+
+	//default is update application's cpu and memory(alter the application config) scale application
+
+	//scale application
+	if vebrType == "scale" {
+		rc.Spec.Replicas = intUtil.Int32ToPointer(app.InstanceCount)
+		app.UpdateStatus = dao.ScaleFailed
+	}
+
+	//scale application
+	if vebrType == "updateConfig" {
+		app.UpdateStatus = dao.UpdateConfigFailed
+	}
+
+	if vebrType == "redeployment" {
+		//delete replicationController of before
+		err := dao.Clientset.Core().ReplicationControllers(NameSpace).Delete("name", &api.DeleteOptions{})
+		if err != nil {
+			log.Errorf("delete application failed ：%s", err.Error())
+			code = StatusInternalServerError
+			ret = map[string]interface{}{"success": false, "reason": err.Error()}
+			return
+		}
+
+		//create a new replicationController
+		//创建replicationController
+		rcTypeMeta := unversioned.TypeMeta{Kind: "ReplicationController", APIVersion: "v1"}
+
+		rcObjectMeta := v1.ObjectMeta{
+			Name: app.Name,
+			Labels: map[string]string{
+				"name": app.Name,
 			},
-			v1.PodSpec{
-				RestartPolicy: v1.RestartPolicyAlways,
-				NodeSelector: map[string]string{
-					"name": app.Name,
+		}
+
+		rcSpec := v1.ReplicationControllerSpec{
+			Replicas: intUtil.Int32ToPointer(app.InstanceCount),
+			Selector: map[string]string{
+				"name": app.Name,
+			},
+			Template: &v1.PodTemplateSpec{
+				v1.ObjectMeta{
+					Name: app.Name,
+					Labels: map[string]string{
+						"name": app.Name,
+					},
 				},
-				Containers: []v1.Container{
-					v1.Container{
-						Name:  app.Name,
-						Image: app.Image,
-						Ports: []v1.ContainerPort{
-							v1.ContainerPort{
-								ContainerPort: 6379,
-								Protocol:      v1.ProtocolTCP,
+				v1.PodSpec{
+					RestartPolicy: v1.RestartPolicyAlways,
+					NodeSelector: map[string]string{
+						"name": app.Name,
+					},
+					Containers: []v1.Container{
+						v1.Container{
+							Name:  app.Name,
+							Image: app.Image,
+							Ports: []v1.ContainerPort{
+								v1.ContainerPort{
+									ContainerPort: 6379,
+									Protocol:      v1.ProtocolTCP,
+								},
 							},
-						},
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse(app.Cpu),
-								v1.ResourceMemory: resource.MustParse(app.Memory),
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse(app.Cpu),
+									v1.ResourceMemory: resource.MustParse(app.Memory),
+								},
 							},
 						},
 					},
 				},
 			},
-		},
-	}
+		}
 
-	rc := new(v1.ReplicationController)
-	rc.TypeMeta = rcTypeMeta
-	rc.ObjectMeta = rcObjectMeta
-	rc.Spec = rcSpec
-
-	if vebrType == "updateStatus" {
-		_, err = dao.Clientset.Core().ReplicationControllers("").UpdateStatus(rc)
-
+		rc := new(v1.ReplicationController)
+		rc.TypeMeta = rcTypeMeta
+		rc.ObjectMeta = rcObjectMeta
+		rc.Spec = rcSpec
+		app.UpdateStatus = dao.RedeploymentFailed
+		result, err := dao.Clientset.Core().ReplicationControllers(NameSpace).Create(rc)
 		if err != nil {
+			log.Errorf("redeploy application failed ,the reason is %s", err.Error())
+			if err = app.Update(); err != nil {
+				log.Errorf("update application updateStatus failed,the reason is %s", err.Error())
+			}
 			code = StatusInternalServerError
 			ret = JSON_EMPTY_OBJ
 			return
 		}
-	}
 
-	if vebrType == "update" {
-		_, err = dao.Clientset.Core().ReplicationControllers("").Update(rc)
-
-		if err != nil {
-			code = StatusInternalServerError
-			ret = JSON_EMPTY_OBJ
-			return
-		}
-	}
-
-	code = StatusNoContent
-	ret = OK
-	return
-}
-
-func ReDeloyment(req *http.Request) (code string, ret interface{}) {
-	//删除
-	err := dao.Clientset.Core().ReplicationControllers("").Delete("name", &api.DeleteOptions{})
-	if err != nil {
-		log.Errorf("delete application failed ：%s", err.Error())
-		code = StatusInternalServerError
-		ret = map[string]interface{}{"success": false, "reason": err.Error()}
-		return
-	}
-
-	decoder := json.NewDecoder(req.Body)
-	app := &dao.App{}
-	err = decoder.Decode(app)
-	if err != nil {
-		log.Errorf("请求参数有误：%s", err.Error())
-		code = StatusBadRequest
-		ret = map[string]interface{}{"success": false, "reason": "请求参数有误，请检查！"}
-		return
-	}
-
-	//创建replicationController
-	rcTypeMeta := unversioned.TypeMeta{Kind: "ReplicationController", APIVersion: "v1"}
-
-	rcObjectMeta := v1.ObjectMeta{
-		Name: app.Name,
-		Labels: map[string]string{
-			"name": app.Name,
-		},
-	}
-
-	rcSpec := v1.ReplicationControllerSpec{
-		Replicas: &app.InstanceCount,
-		Selector: map[string]string{
-			"name": app.Name,
-		},
-		Template: &v1.PodTemplateSpec{
-			v1.ObjectMeta{
-				Name: app.Name,
-				Labels: map[string]string{
-					"name": app.Name,
-				},
-			},
-			v1.PodSpec{
-				RestartPolicy: v1.RestartPolicyAlways,
-				NodeSelector: map[string]string{
-					"name": app.Name,
-				},
-				Containers: []v1.Container{
-					v1.Container{
-						Name:  app.Name,
-						Image: app.Image,
-						Ports: []v1.ContainerPort{
-							v1.ContainerPort{
-								ContainerPort: 6379,
-								Protocol:      v1.ProtocolTCP,
-							},
-						},
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse(app.Cpu),
-								v1.ResourceMemory: resource.MustParse(app.Memory),
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	rc := new(v1.ReplicationController)
-	rc.TypeMeta = rcTypeMeta
-	rc.ObjectMeta = rcObjectMeta
-	rc.Spec = rcSpec
-
-	result, err := dao.Clientset.Core().ReplicationControllers("").Create(rc)
-	if err != nil {
-		log.Errorf("deploy application failed ,the reason is %s", err.Error())
-		app.Status = dao.AppFailed
+		app.UpdateStatus = dao.RedeploymentSuccessed
+		app.Status = dao.AppRunning
 		if err = app.Update(); err != nil {
-			log.Errorf("update application status failed,the reason is %s", err.Error())
+			log.Errorf("update application updateStatus failed,the reason is %s", err.Error())
+			code = StatusInternalServerError
+			ret = JSON_EMPTY_OBJ
+			return
 		}
-		code = StatusInternalServerError
-		ret = JSON_EMPTY_OBJ
+
+		code = StatusNoContent
+		ret = result
 		return
 	}
 
-	app.Status = dao.AppSuccessed
-	if err = app.Update(); err != nil {
-		log.Errorf("update application status failed,the reason is %s", err.Error())
-		code = StatusInternalServerError
-		ret = JSON_EMPTY_OBJ
-		return
-	}
-
-	code = StatusCreated
-	ret = result
-	return
+	return updateRc(NameSpace, app, rc)
 }
 
 func GetAppStatus(req *http.Request) (code string, ret interface{}) {
@@ -425,7 +375,7 @@ func GetAppStatus(req *http.Request) (code string, ret interface{}) {
 	return
 }
 
-func GetContainers(req *http.Request) (code string, ret interface{}) {
+func GetAppContainers(req *http.Request) (code string, ret interface{}) {
 	generateName := req.FormValue("appName") + "-"
 
 	podList, err := dao.Clientset.Core().Pods("default").List(api.ListOptions{})
@@ -461,5 +411,27 @@ func GetContainers(req *http.Request) (code string, ret interface{}) {
 
 	code = StatusOK
 	ret = containers
+	return
+}
+
+func updateRc(nameSpace string, app *dao.App, rc *v1.ReplicationController) (code string, ret interface{}) {
+	_, err := dao.Clientset.Core().ReplicationControllers(nameSpace).Update(rc)
+
+	if err != nil {
+		log.Errorf("update err :%v", err.Error())
+		code = StatusInternalServerError
+		ret = JSON_EMPTY_OBJ
+		return
+	}
+
+	if err = app.Update(); err != nil {
+		log.Errorf("update application failed,the reason is %s", err.Error())
+		code = StatusInternalServerError
+		ret = JSON_EMPTY_OBJ
+		return
+	}
+
+	code = StatusNoContent
+	ret = OK
 	return
 }
