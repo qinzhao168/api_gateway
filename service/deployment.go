@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"api_gateway/basis/intUtil"
+	"api_gateway/basis/parseUtil"
 	"api_gateway/dao"
 	"github.com/gorilla/mux"
 	"k8s.io/client-go/1.4/pkg/api"
@@ -99,7 +99,7 @@ func DeploymentApp(req *http.Request) (code string, ret interface{}) {
 	}
 	rc.Spec = rcSpec
 
-	result, err := dao.Clientset.Core().ReplicationControllers("default").Create(rc)
+	result, err := dao.Clientset.Core().ReplicationControllers(NameSpace).Create(rc)
 	if err != nil {
 		log.Errorf("deploy application failed ,the reason is %s", err.Error())
 		app.Status = dao.AppFailed
@@ -142,7 +142,7 @@ func DeploymentApp(req *http.Request) (code string, ret interface{}) {
 		}
 		service.Spec = svServiceSpec
 
-		result, err := dao.Clientset.Core().Services("default").Create(service)
+		_, err := dao.Clientset.Core().Services(NameSpace).Create(service)
 
 		if err != nil {
 			log.Errorf("deploy application failed ,the reason is %s", err.Error())
@@ -154,8 +154,6 @@ func DeploymentApp(req *http.Request) (code string, ret interface{}) {
 			ret = JSON_EMPTY_OBJ
 			return
 		}
-
-		log.Infof("the result is %v", result)
 	}
 
 	app.Status = dao.AppSuccessed
@@ -182,11 +180,39 @@ func Delete(req *http.Request) (code string, ret interface{}) {
 		return
 	}
 
-	err = dao.Clientset.Core().ReplicationControllers("").Delete("name", &api.DeleteOptions{})
+	// rc := new(v1.ReplicationController)
+	rc, err := dao.Clientset.Core().ReplicationControllers(NameSpace).Get(app.Name)
+	if err != nil {
+		code = StatusNotFound
+		ret = map[string]interface{}{"success": false, "reason": err.Error()}
+		return
+	}
+
+	//delete conditions
+	deleteOption := new(api.DeleteOptions)
+	deleteOption.TypeMeta = unversioned.TypeMeta{Kind: "ReplicationController", APIVersion: "v1"}
+
+	//if the value is 0 ,delete immediately. if not set,the default grace period for the specified type will be used ,
+	//the default grace period is 30s
+	deleteOption.GracePeriodSeconds = new(int64)
+
+	//delete precondition(前提条件)
+	deleteOption.Preconditions = &api.Preconditions{UID: &(rc.ObjectMeta.UID)}
+
+	// If true/false，  added to/removed from the object's finalizers list
+	deleteOption.OrphanDependents = parseUtil.BoolToPointer(false)
+	err = dao.Clientset.Core().ReplicationControllers(NameSpace).Delete(app.Name, deleteOption)
 	if err != nil {
 		log.Errorf("delete application failed ：%s", err.Error())
 		code = StatusInternalServerError
 		ret = map[string]interface{}{"success": false, "reason": err.Error()}
+		return
+	}
+
+	if err = app.Delete(); err != nil {
+		log.Errorf("delete application failed,the reason is %s", err.Error())
+		code = StatusInternalServerError
+		ret = JSON_EMPTY_OBJ
 		return
 	}
 
@@ -208,11 +234,11 @@ func Update(req *http.Request) (code string, ret interface{}) {
 		return
 	}
 
-	// rc := new(v1.ReplicationController)
-	rc, _ := dao.Clientset.Core().ReplicationControllers(NameSpace).Get(app.Name)
+	rc := new(v1.ReplicationController)
+	rc, _ = dao.Clientset.Core().ReplicationControllers(NameSpace).Get(app.Name)
 	//stop application
 	if vebrType == "stop" {
-		rc.Spec.Replicas = intUtil.Int32ToPointer(0)
+		rc.Spec.Replicas = parseUtil.Int32ToPointer(0)
 		app.UpdateStatus = dao.StopFailed
 	}
 
@@ -225,26 +251,48 @@ func Update(req *http.Request) (code string, ret interface{}) {
 			ret = map[string]interface{}{"success": false, "reason": err.Error()}
 			return
 		}
-		rc.Spec.Replicas = intUtil.Int32ToPointer(app.InstanceCount)
+		rc.Spec.Replicas = parseUtil.Int32ToPointer(app.InstanceCount)
 		app.UpdateStatus = dao.StartFailed
 	}
 
-	//default is update application's cpu and memory(alter the application config) scale application
-
 	//scale application
 	if vebrType == "scale" {
-		rc.Spec.Replicas = intUtil.Int32ToPointer(app.InstanceCount)
+		rc.Spec.Replicas = parseUtil.Int32ToPointer(app.InstanceCount)
 		app.UpdateStatus = dao.ScaleFailed
 	}
 
 	//scale application
 	if vebrType == "updateConfig" {
 		app.UpdateStatus = dao.UpdateConfigFailed
+		log.Errorf("input cpu %v", app.Cpu)
+		log.Errorf("input memory %v", app.Memory)
+
+		log.Errorf("rc before cpu %v", rc.Spec.Template.Spec.Containers[0].Resources.Requests[v1.ResourceCPU])
+		log.Errorf("rc before memory %v", rc.Spec.Template.Spec.Containers[0].Resources.Requests[v1.ResourceMemory])
+		rc.Spec.Template.Spec.Containers[0].Resources.Requests[v1.ResourceCPU] = resource.MustParse(app.Cpu)
+		rc.Spec.Template.Spec.Containers[0].Resources.Requests[v1.ResourceMemory] = resource.MustParse(app.Memory)
+
+		log.Errorf("rc late cpu %v", rc.Spec.Template.Spec.Containers[0].Resources.Requests[v1.ResourceCPU])
+		log.Errorf("rc late memory %v", rc.Spec.Template.Spec.Containers[0].Resources.Requests[v1.ResourceMemory])
 	}
 
 	if vebrType == "redeployment" {
 		//delete replicationController of before
-		err := dao.Clientset.Core().ReplicationControllers(NameSpace).Delete("name", &api.DeleteOptions{})
+
+		//delete conditions
+		deleteOption := new(api.DeleteOptions)
+		deleteOption.TypeMeta = unversioned.TypeMeta{Kind: "ReplicationController", APIVersion: "v1"}
+
+		//if the value is 0 ,delete immediately. if not set,the default grace period for the specified type will be used ,
+		//the default grace period is 30s
+		deleteOption.GracePeriodSeconds = new(int64)
+
+		//delete precondition(前提条件)
+		deleteOption.Preconditions = &api.Preconditions{UID: &(rc.ObjectMeta.UID)}
+
+		// If true/false，  added to/removed from the object's finalizers list
+		deleteOption.OrphanDependents = parseUtil.BoolToPointer(false)
+		err := dao.Clientset.Core().ReplicationControllers(NameSpace).Delete("name", deleteOption)
 		if err != nil {
 			log.Errorf("delete application failed ：%s", err.Error())
 			code = StatusInternalServerError
@@ -253,7 +301,6 @@ func Update(req *http.Request) (code string, ret interface{}) {
 		}
 
 		//create a new replicationController
-		//创建replicationController
 		rcTypeMeta := unversioned.TypeMeta{Kind: "ReplicationController", APIVersion: "v1"}
 
 		rcObjectMeta := v1.ObjectMeta{
@@ -264,7 +311,7 @@ func Update(req *http.Request) (code string, ret interface{}) {
 		}
 
 		rcSpec := v1.ReplicationControllerSpec{
-			Replicas: intUtil.Int32ToPointer(app.InstanceCount),
+			Replicas: parseUtil.Int32ToPointer(app.InstanceCount),
 			Selector: map[string]string{
 				"name": app.Name,
 			},
@@ -327,12 +374,42 @@ func Update(req *http.Request) (code string, ret interface{}) {
 			return
 		}
 
-		code = StatusNoContent
+		code = StatusCreated
 		ret = result
 		return
 	}
 
 	return updateRc(NameSpace, app, rc)
+}
+
+func updateRc(nameSpace string, app *dao.App, rc *v1.ReplicationController) (code string, ret interface{}) {
+	_, err := dao.Clientset.Core().ReplicationControllers(nameSpace).Update(rc)
+
+	if err != nil {
+		log.Errorf("update err :%v", err.Error())
+
+		if err = app.Update(); err != nil {
+			log.Errorf("update application failed,the reason is %s", err.Error())
+			code = StatusInternalServerError
+			ret = JSON_EMPTY_OBJ
+			return
+		}
+
+		code = StatusInternalServerError
+		ret = JSON_EMPTY_OBJ
+		return
+	}
+
+	if err = app.Update(); err != nil {
+		log.Errorf("update application failed,the reason is %s", err.Error())
+		code = StatusInternalServerError
+		ret = JSON_EMPTY_OBJ
+		return
+	}
+
+	code = StatusCreated
+	ret = OK
+	return
 }
 
 func GetAppStatus(req *http.Request) (code string, ret interface{}) {
@@ -411,27 +488,5 @@ func GetAppContainers(req *http.Request) (code string, ret interface{}) {
 
 	code = StatusOK
 	ret = containers
-	return
-}
-
-func updateRc(nameSpace string, app *dao.App, rc *v1.ReplicationController) (code string, ret interface{}) {
-	_, err := dao.Clientset.Core().ReplicationControllers(nameSpace).Update(rc)
-
-	if err != nil {
-		log.Errorf("update err :%v", err.Error())
-		code = StatusInternalServerError
-		ret = JSON_EMPTY_OBJ
-		return
-	}
-
-	if err = app.Update(); err != nil {
-		log.Errorf("update application failed,the reason is %s", err.Error())
-		code = StatusInternalServerError
-		ret = JSON_EMPTY_OBJ
-		return
-	}
-
-	code = StatusNoContent
-	ret = OK
 	return
 }

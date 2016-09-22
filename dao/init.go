@@ -40,7 +40,7 @@ func initK8Sclient() {
 	kubeconfig := flag.String("kubeconfig", "./etc/config", "absolute path to the kubeconfig file")
 	flag.Parse()
 	// uses the current context in kubeconfig
-	config, err := clientcmd.BuildConfigFromFlags("172.17.11.1:8080", *kubeconfig)
+	config, err := clientcmd.BuildConfigFromFlags("192.168.1.113:8080", *kubeconfig)
 	if err != nil {
 		panic(err.Error())
 	}
