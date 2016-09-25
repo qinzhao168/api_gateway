@@ -17,7 +17,6 @@ import (
 var (
 	NameSpace        string = "default"
 	app_status       string
-	app_status_slice = make([]v1.PodPhase, 5)
 	status_Pending   = "Pending"
 	status_Running   = "Running"
 	status_Succeeded = "Succeeded"
