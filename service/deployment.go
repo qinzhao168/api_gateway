@@ -51,13 +51,37 @@ func DeploymentApp(req *http.Request) (code string, ret interface{}) {
 		return
 	}
 
-	//create replicationController
+	//create a namespace
+	nc := new(v1.Namespace)
+	ncTypeMeta := unversioned.TypeMeta{Kind: "NameSpace", APIVersion: "v1"}
+	nc.TypeMeta = ncTypeMeta
+
+	nc.ObjectMeta = v1.ObjectMeta{
+		Name: app.UserName,
+	}
+
+	nc.Spec = v1.NamespaceSpec{}
+
+	resultnc, err := dao.Clientset.Core().Namespaces().Create(nc)
+
+	if err != nil {
+		log.Errorf("deploy application failed ,the reason is %s", err.Error())
+		app.Status = dao.AppFailed
+		if err = app.Update(); err != nil {
+			log.Errorf("update application status failed,the reason is %s", err.Error())
+		}
+		code = StatusInternalServerError
+		ret = JSON_EMPTY_OBJ
+		return
+	}
+
+	//create a replicationController
 	rc := new(v1.ReplicationController)
 
 	rcTypeMeta := unversioned.TypeMeta{Kind: "ReplicationController", APIVersion: "v1"}
 	rc.TypeMeta = rcTypeMeta
 
-	rcObjectMeta := v1.ObjectMeta{Name: app.Name, Labels: map[string]string{"name": app.Name}}
+	rcObjectMeta := v1.ObjectMeta{Name: app.Name, Namespace: app.UserName, Labels: map[string]string{"name": app.Name}}
 	rc.ObjectMeta = rcObjectMeta
 
 	rcSpec := v1.ReplicationControllerSpec{
@@ -67,8 +91,8 @@ func DeploymentApp(req *http.Request) (code string, ret interface{}) {
 		},
 		Template: &v1.PodTemplateSpec{
 			v1.ObjectMeta{
-				Name: app.Name,
-				// Namespace: app.UserName,
+				Name:      app.Name,
+				Namespace: app.UserName,
 				Labels: map[string]string{
 					"name": app.Name,
 				},
@@ -115,7 +139,7 @@ func DeploymentApp(req *http.Request) (code string, ret interface{}) {
 		svTypemeta := unversioned.TypeMeta{Kind: "Service", APIVersion: "v1"}
 		service.TypeMeta = svTypemeta
 
-		svObjectMeta := v1.ObjectMeta{Name: app.Name, Labels: map[string]string{"name": app.Name}}
+		svObjectMeta := v1.ObjectMeta{Name: app.Name, Namespace: app.UserName, Labels: map[string]string{"name": app.Name}}
 		service.ObjectMeta = svObjectMeta
 
 		svServiceSpec := v1.ServiceSpec{
@@ -180,6 +204,7 @@ func Delete(req *http.Request) (code string, ret interface{}) {
 	}
 
 	// rc := new(v1.ReplicationController)
+	NameSpace = app.UserName
 	rc, err := dao.Clientset.Core().ReplicationControllers(NameSpace).Get(app.Name)
 	if err != nil {
 		code = StatusNotFound
@@ -233,6 +258,7 @@ func Update(req *http.Request) (code string, ret interface{}) {
 		return
 	}
 
+	NameSpace = app.UserName
 	rc := new(v1.ReplicationController)
 	rc, _ = dao.Clientset.Core().ReplicationControllers(NameSpace).Get(app.Name)
 	//stop application
@@ -412,8 +438,9 @@ func updateRc(nameSpace string, app *dao.App, rc *v1.ReplicationController) (cod
 }
 
 func GetAppStatus(req *http.Request) (code string, ret interface{}) {
+	NameSpace = req.FormValue("nameSpace")
 	generateName := req.FormValue("appName") + "-"
-	podList, err := dao.Clientset.Core().Pods("default").List(api.ListOptions{})
+	podList, err := dao.Clientset.Core().Pods(NameSpace).List(api.ListOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
@@ -452,9 +479,10 @@ func GetAppStatus(req *http.Request) (code string, ret interface{}) {
 }
 
 func GetAppContainers(req *http.Request) (code string, ret interface{}) {
+	NameSpace = req.FormValue("nameSpace")
 	generateName := req.FormValue("appName") + "-"
 
-	podList, err := dao.Clientset.Core().Pods("default").List(api.ListOptions{})
+	podList, err := dao.Clientset.Core().Pods(NameSpace).List(api.ListOptions{})
 	if err != nil {
 		code = StatusInternalServerError
 		ret = JSON_EMPTY_ARRAY
