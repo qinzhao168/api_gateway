@@ -17,6 +17,7 @@ import (
 var (
 	NameSpace        string = "default"
 	app_status       string
+	app_status_slice = make([]v1.PodPhase, 5)
 	status_Pending   = "Pending"
 	status_Running   = "Running"
 	status_Succeeded = "Succeeded"
@@ -62,7 +63,7 @@ func DeploymentApp(req *http.Request) (code string, ret interface{}) {
 
 	nc.Spec = v1.NamespaceSpec{}
 
-	resultnc, err := dao.Clientset.Core().Namespaces().Create(nc)
+	_, err = dao.Clientset.Core().Namespaces().Create(nc)
 
 	if err != nil {
 		log.Errorf("deploy application failed ,the reason is %s", err.Error())
